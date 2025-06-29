@@ -1,0 +1,273 @@
+---
+title: "Client Report - Can You Predict That?"
+subtitle: "Course DS 250"
+author: "Matthew Foushee"
+format:
+  html:
+    self-contained: true
+    page-layout: full
+    title-block-banner: true
+    toc: true
+    toc-depth: 3
+    toc-location: body
+    number-sections: false
+    html-math-method: katex
+    code-fold: true
+    code-summary: "Show the code"
+    code-overflow: wrap
+    code-copy: hover
+    code-tools:
+        source: false
+        toggle: true
+        caption: See code
+execute: 
+  warning: false
+    
+---
+
+```{python}
+import pandas as pd 
+import numpy as np
+from plotnine import * 
+# add the additional libraries you need to import for ML here
+```
+
+
+```{python}
+# Learn morea about Code Cells: https://quarto.org/docs/reference/cells/cells-jupyter.html
+
+# Include and execute your code here
+
+# import your data here using pandas and the URL
+df = pd.read_csv("dwellings_ml.csv")
+
+```
+
+## Elevator pitch
+_A SHORT (2-3 SENTENCES) PARAGRAPH THAT `DESCRIBES KEY INSIGHTS` TAKEN FROM METRICS IN THE PROJECT RESULTS THINK TOP OR MOST IMPORTANT RESULTS._ (Note: this is not a summary of the project, but a summary of the results.)
+
+_A Client has requested this analysis and this is your one shot of what you would say to your boss in a 2 min elevator ride before he takes your report and hands it to the client._
+
+## QUESTION|TASK 1
+
+__Create 2-3 charts that evaluate potential relationships between the home variables and `before1980`.__ Explain what you learn from the charts that could help a machine learning algorithm. 
+
+This first code block helped me learn which variable I would like to look more into.
+```{python}
+# Include and execute your code here
+# columns = df.columns
+
+# toskip = ['parcel', 'yrbuilt']
+# counter = 1
+
+# for column in columns:
+#   if column in toskip:
+#     continue
+#   print(f"Now doing {column}")
+#   p = ggplot(df) + geom_point(aes(x='yrbuilt', y=column)) + ggtitle(f"{column}")
+#   filename = counter
+#   counter += 1
+#   p.save(f'images/{filename}.png', width=6, height=4)
+#   (
+#   ggplot(df) + geom_bar(aes(x='gartype_att/CP', y='before1980')) + ggtitle('gartype_att/CP')
+# )
+```
+
+```{python}
+# Include and execute your code here
+
+df["AgeGroup"] = df["before1980"].map({0: "1980 or Later", 1: "Before 1980"})
+
+# Create GarageType column
+df["GarageType"] = df[["gartype_Att", "gartype_Det"]].idxmax(axis=1).str.replace("gartype_", "")
+```
+
+After 1980 the sqft area of homes tended to be bigger
+
+```{python}
+# 1. Living Area by Year Built
+plot1 = (
+    ggplot(df, aes(x="AgeGroup", y="livearea"))
+    + geom_boxplot()
+    + labs(
+        title="Living Area by Year Built Group",
+        x="Year Built",
+        y="Living Area (sq ft)"
+    )
+    + theme(
+        axis_text_x=element_text(rotation=30, ha="right")
+    )
+)
+plot1
+```
+
+Older homes tended to have one or two bathrooms while nother homes tended to have 2 or 3
+
+```{python}
+# 2. Number of Bathrooms by Year Built
+plot2 = (
+    ggplot(df, aes(x="factor(numbaths)", fill="AgeGroup"))
+    + geom_bar(position=position_dodge())
+    + labs(
+        title="Number of Bathrooms by Year Built Group",
+        x="Number of Bathrooms",
+        y="Count of Homes",
+        fill="Year Built"
+    )
+    + theme(
+        axis_text_x=element_text(rotation=0)
+    )
+)
+plot2
+```
+
+Homes built before 1980 more often has detached garages while nerver ones tend to have attached ones.
+
+```{python}
+# 3. Garage Type by Year Built
+plot3 = (
+    ggplot(df, aes(x="GarageType", fill="AgeGroup"))
+    + geom_bar(position=position_dodge())
+    + labs(
+        title="Garage Type by Year Built Group",
+        x="Garage Type",
+        y="Count of Homes",
+        fill="Year Built"
+    )
+    + theme(
+        axis_text_x=element_text(rotation=30, ha="right")
+    )
+)
+plot3
+```
+
+## QUESTION|TASK 2
+
+__Build a classification model labeling houses as being built “before 1980” or “during or after 1980”.__ Your goal is to reach or exceed 90% accuracy. Explain your final model choice (algorithm, tuning parameters, etc) and describe what other models you tried.  
+
+I tried GaussianNB, it gave a 60-70% accurracy
+I then tried this RandomForestClassifier, it at first was ALWAYS giving me a 100% accuracy. After some better understanding i realized it had access to the yrbuilt variable which basically gave the algorithm the answer. After not giving it access to that, it now has a 90-92% accuracy.
+
+```{python}
+# Include and execute your code here
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+
+features = df.drop(columns=["parcel", "before1980", "AgeGroup", "GarageType", "yrbuilt", "syear"])
+#features = pd.get_dummies(features)
+
+targets = df["before1980"]
+
+train_data, test_data, train_targets, test_targets = train_test_split(features, targets, test_size=0.3)
+
+clf = RandomForestClassifier(n_estimators=200)
+clf.fit(train_data, train_targets)
+
+targets_predicted = clf.predict(test_data)
+
+accuracy = accuracy_score(test_targets, targets_predicted)
+
+print(f"Test Targets: {len(test_targets)}")
+print(f"Test Targets: {len(targets_predicted)}")
+print(f"Accuracy: {accuracy:.3f}")
+print(classification_report(test_targets, targets_predicted))
+```
+
+
+## QUESTION|TASK 3
+
+__Justify your classification model by discussing the most important features selected by your model.__ This discussion should include a feature importance chart and a description of the features. 
+
+as this table shows the top three features were the Living area, num of baths, and number of stories.
+
+```{python}
+# Include and execute your code here
+importances = clf.feature_importances_
+feature_names = train_data.columns
+
+feat_imp_df = pd.DataFrame({
+    "Feature": feature_names,
+    "Importance": importances
+}).sort_values(by="Importance", ascending=False)
+feat_imp_df.head(10)
+
+```
+
+
+## QUESTION|TASK 4
+
+__Describe the quality of your classification model using 2-3 different evaluation metrics.__ You also need to explain how to interpret each of the evaluation metrics you use.  
+
+The 3 different evaluation metrics I will be using are: Accuracy, Precision, and recall
+
+The Accuracy is the overall ratio of how many did it say were built before 1980 vs how many were actually made before:
+  Accuracy = predicted_count/correct_count
+Accuracy = 0.80 means 80% of the samples were predicted correctly.
+
+
+The Precision is how many of the predicated are actually built before 1980 or positive.
+  Precision = True Positives/(True positives + False Positives)
+Precision = 0.85 means that 85% of homes predicted as “before 1980” actually are.
+
+The recall measures of all the acuall positive samples jpw many did the model correctly identify.
+  Recall = True Positives/(True Positives + False Negatives)
+Recall = 0.75 means the model correctly found 75% of the old homes.
+
+
+I trust/like the recall metric the most.
+
+```{python}
+# Include and execute your code here
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+accuracy = accuracy_score(test_targets, targets_predicted)
+precision = precision_score(test_targets, targets_predicted)
+recall = recall_score(test_targets, targets_predicted)
+
+
+print(f"Accuracy: {accuracy:.3f}")
+print(f"Precision: {precision:.3f}")
+print(f"Recall: {recall:.3f}")
+```
+
+---
+
+## STRETCH QUESTION|TASK 1
+
+__Repeat the classification model using 3 different algorithms.__ Display their Feature Importance, and Decision Matrix. Explian the differences between the models and which one you would recommend to the Client.   
+
+_type your results and analysis here_
+
+```{python}
+# Include and execute your code here
+
+
+```
+
+
+## STRETCH QUESTION|TASK 2
+
+__Join the `dwellings_neighborhoods_ml.csv` data to the `dwelling_ml.csv` on the `parcel` column to create a new dataset. Duplicate the code for the stretch question above and update it to use this data.__ Explain the differences and if this changes the model you recomend to the Client.   
+
+_type your results and analysis here_
+
+```{python}
+# Include and execute your code here
+
+
+```
+
+
+## STRETCH QUESTION|TASK 3
+
+__Can you build a model that predicts the year a house was built?__ Explain the model and the evaluation metrics you would use to determine if the model is good.  
+
+_type your results and analysis here_
+
+```{python}
+# Include and execute your code here
+
+
+```
+
+---
